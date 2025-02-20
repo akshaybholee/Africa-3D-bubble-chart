@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Bubble Chart</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <style>
+        body { margin: 0; overflow: hidden; background: white; }
+        #tooltip {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px;
+            border-radius: 4px;
+            font-family: Arial, sans-serif;
+            font-size: 12px;
+            pointer-events: none;
+            display: none;
+            border: 1px solid #ddd;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
+            z-index: 1000;
+        }
+		
+		#chartTitle {
+    position: absolute;
+    top: 10px;
+    width: 100%;
+    text-align: center;
+    font-family: Arial, sans-serif;
+    font-size: 24px;
+    font-weight: bold;
+    color: black;
+    z-index: 1001;
+}
+    </style>
+</head>
+<body>
+    <div id="chartTitle">Africa's Export Diversification</div>
+    <div id="tooltip"></div>
+    <script>
+        // Scene setup
+        var scene = new THREE.Scene();
+        scene.background = new THREE.Color(0xffffff);
+        
+        var camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 2000);
+        camera.position.set(577.6687401140246, 124.81134557494015, 1136.0990074420617);
+		camera.rotation.set(-0.10942077105811827, 0.4679789990402191, 0.049515331927204975);
+        camera.lookAt(0, 0, 0);
+        
+        var renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // Lighting setup
+        var ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        var directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(200, 200, 200);
+        scene.add(directionalLight);
+
+        // Grid creation function
+        function createPlane(size, divisions) {
+            var geometry = new THREE.PlaneGeometry(size, size);
+            var material = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.1
+            });
+            var plane = new THREE.Mesh(geometry, material);
+
+            var lineGeometry = new THREE.BufferGeometry();
+            var lineVertices = [];
+            var step = size / divisions;
+
+            for (var i = 0; i <= divisions; i++) {
+                var pos = (i * step) - size/2;
+                lineVertices.push(pos, -size/2, 0, pos, size/2, 0);
+                lineVertices.push(-size/2, pos, 0, size/2, pos, 0);
+            }
+
+            lineGeometry.setAttribute('position', new THREE.Float32BufferAttribute(lineVertices, 3));
+            var lineMaterial = new THREE.LineBasicMaterial({ 
+                color: 0xB0B0B0,
+                transparent: true,
+                opacity: 0.3
+            });
+            var lines = new THREE.LineSegments(lineGeometry, lineMaterial);
+            plane.add(lines);
+
+            return plane;
+        }
+
+        // Define size and divisions
+        var size = 500;
+        var divisions = 10;
+
+        // Create the planes
+        var bottomPlane = createPlane(size, divisions);
+        bottomPlane.rotation.x = -Math.PI/2;
+        bottomPlane.position.y = -size/2;
+        scene.add(bottomPlane);
+
+        var backPlane = createPlane(size, divisions);
+        backPlane.position.z = -size/2;
+        scene.add(backPlane);
+
+        var sidePlane = createPlane(size, divisions);
+        sidePlane.rotation.y = Math.PI/2;
+        sidePlane.position.x = -size/2;
+        scene.add(sidePlane);
+
+        // Helper functions for creating labels
+        function createAxisLabel(text, position) {
+            var canvas = document.createElement('canvas');
+            var context = canvas.getContext('2d');
+            canvas.width = 128;
+            canvas.height = 64;
+
+            context.fillStyle = 'black';
+            context.font = '24px Arial';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(text, canvas.width/2, canvas.height/2);
+
+            var texture = new THREE.CanvasTexture(canvas);
+            var spriteMaterial = new THREE.SpriteMaterial({
+                map: texture
+            });
+            var sprite = new THREE.Sprite(spriteMaterial);
+            sprite.position.copy(position);
+            sprite.scale.set(60, 30, 1);
+            return sprite;
+        }
+
+        function createAxisTitle(lines, position) {
+            var canvas = document.createElement('canvas');
+            var context = canvas.getContext('2d');
+            canvas.width = 256;
+            canvas.height = 128;
+
+            context.fillStyle = 'black';
+            context.font = 'bold 24px Arial';
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+
+            var lineHeight = 30;
+            var startY = (canvas.height - (lines.length - 1) * lineHeight) / 2;
+            lines.forEach((line, i) => {
+                context.fillText(line, canvas.width/2, startY + i * lineHeight);
+            });
+
+            var texture = new THREE.CanvasTexture(canvas);
+            var spriteMaterial = new THREE.SpriteMaterial({
+                map: texture
+            });
+            var sprite = new THREE.Sprite(spriteMaterial);
+            sprite.position.copy(position);
+            sprite.scale.set(120, 60, 1);
+            return sprite;
+        }
+
+        // Add axis values
+        // X-axis values (Years)
+        for (var i = 0; i <= divisions; i++) {
+            var xPos = (i * size/divisions) - size/2;
+            var year = Math.round(2008 + (i * (2023-2008)/divisions));
+            scene.add(createAxisLabel(year.toString(), 
+                new THREE.Vector3(xPos, -size/2 - 40, size/2 + 20)
+            ));
+        }
+
+        // Y-axis values (now Products)
+        for (var i = 0; i <= divisions; i++) {
+            var yPos = (i * size/divisions) - size/2;
+            var complexity = (-2.07 + (i * ((-1.24+2.07)/divisions))).toFixed(2);
+            scene.add(createAxisLabel(complexity.toString(), 
+                new THREE.Vector3(-size/2 - 30, yPos, size/2)
+            ));
+        }
+
+        // Z-axis values (now Complexity)
+        for (var i = 0; i <= divisions; i++) {
+            var zPos = size/2 - (i * size/divisions);
+            var products = Math.round(38 + (i * (75-38)/divisions));
+            scene.add(createAxisLabel(products.toString(), 
+                new THREE.Vector3(size/2, -size/2 - 20, zPos)
+            ));
+        }
+
+        // Add axis titles
+        scene.add(createAxisTitle(
+            ['Year'],
+            new THREE.Vector3(0, -size/2 - 80, size/2)
+        ));
+
+        scene.add(createAxisTitle(
+		['Weighted Product', 'Complexity Index'],
+            new THREE.Vector3(-size/2 - 150, 0, size/2)
+        ));
+
+        scene.add(createAxisTitle(
+            ['Number of products', '(Over 1B USD exports)'],
+            new THREE.Vector3(size/2 + 50, -size/2 - 80, 0)
+        ));
+
+        // Data points
+        var data = [
+            {Year: 2008, Number: 42, Complexity: -2.0654, Exports: 430121157000},
+            {Year: 2009, Number: 38, Complexity: -1.8977, Exports: 273150840000},
+            {Year: 2010, Number: 45, Complexity: -1.8286, Exports: 384060960000},
+            {Year: 2011, Number: 48, Complexity: -1.7649, Exports: 475555060000},
+            {Year: 2012, Number: 50, Complexity: -1.7308, Exports: 483512983000},
+            {Year: 2013, Number: 48, Complexity: -1.7034, Exports: 444316816000},
+            {Year: 2014, Number: 52, Complexity: -1.7082, Exports: 420262768000},
+            {Year: 2015, Number: 50, Complexity: -1.4966, Exports: 311119462000},
+            {Year: 2016, Number: 47, Complexity: -1.3857, Exports: 262285588000},
+            {Year: 2017, Number: 54, Complexity: -1.441, Exports: 324000792000},
+            {Year: 2018, Number: 57, Complexity: -1.5431, Exports: 393563435000},
+            {Year: 2019, Number: 54, Complexity: -1.3889, Exports: 366028474000},
+            {Year: 2020, Number: 53, Complexity: -1.2452, Exports: 282467254000},
+            {Year: 2021, Number: 72, Complexity: -1.319, Exports: 445947213000},
+            {Year: 2022, Number: 75, Complexity: -1.4766, Exports: 562285393000},
+            {Year: 2023, Number: 75, Complexity: -1.4926, Exports: 522559025000}
+        ];
+
+        var minExport = Math.min.apply(Math, data.map(function(d) { return d.Exports; }));
+        var maxExport = Math.max.apply(Math, data.map(function(d) { return d.Exports; }));
+
+        function scaleValue(value, min1, max1, min2, max2) {
+            return (value - min1) * (max2 - min2) / (max1 - min1) + min2;
+        }
+
+        // Create spheres with swapped Y and Z coordinates
+        data.forEach(function(d) {
+            var radius = scaleValue(d.Exports, minExport, maxExport, 5, 30);
+            var geometry = new THREE.SphereGeometry(radius, 32, 32);
+            var material = new THREE.MeshPhongMaterial({
+                color: 0x2196F3,
+                shininess: 50
+            });
+            
+            var sphere = new THREE.Mesh(geometry, material);
+            
+            sphere.position.x = scaleValue(d.Year, 2008, 2023, -250, 250);
+            sphere.position.y = scaleValue(d.Complexity, -2.07, -1.24, -250, 250);
+            sphere.position.z = scaleValue(d.Number, 38, 75, 250, -250);
+            
+            sphere.userData = d;
+            scene.add(sphere);
+        });
+
+        // Raycaster and tooltip
+        var raycaster = new THREE.Raycaster();
+        var mouse = new THREE.Vector2();
+        var tooltip = document.getElementById('tooltip');
+
+        window.addEventListener('mousemove', onMouseMove);
+
+        function onMouseMove(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+            raycaster.setFromCamera(mouse, camera);
+            var intersects = raycaster.intersectObjects(scene.children);
+
+            var found = false;
+            for(var i = 0; i < intersects.length; i++) {
+                if(intersects[i].object.geometry.type === 'SphereGeometry') {
+                    var d = intersects[i].object.userData;
+                    tooltip.style.display = 'block';
+                    tooltip.style.left = event.clientX + 10 + 'px';
+                    tooltip.style.top = event.clientY + 10 + 'px';
+                    tooltip.innerHTML = 
+                        'Year: ' + d.Year + '<br>' +
+                        'Number of products >$1B: ' + d.Number + '<br>' +
+                        'Weighted PCI: ' + d.Complexity.toFixed(2) + '<br>' +
+                        'Exports: $' + (d.Exports / 1e9).toFixed(0) + ' billion';
+                    found = true;
+                    break;
+                }
+            }
+            if(!found) tooltip.style.display = 'none';
+        }
+
+        // Camera controls
+        var isDragging = false;
+        var previousMousePosition = {x: 0, y: 0};
+
+        window.addEventListener('mousedown', function() {
+            isDragging = true;
+        });
+
+        window.addEventListener('mouseup', function() {
+            isDragging = false;
+        });
+
+       // window.addEventListener('mousemove', function(e) {
+     //     if(isDragging) {
+     //         var deltaMove = {
+     //             x: e.clientX - previousMousePosition.x,
+     //             y: e.clientY - previousMousePosition.y
+     //         };
+	 //
+     //         var rotationSpeed = 0.002;
+     //         camera.position.x = camera.position.x * Math.cos(deltaMove.x * rotationSpeed) + 
+     //                           camera.position.z * Math.sin(deltaMove.x * rotationSpeed);
+     //         camera.position.z = -camera.position.x * Math.sin(deltaMove.x * rotationSpeed) + 
+     //                            camera.position.z * Math.cos(deltaMove.x * rotationSpeed);
+     //         
+     //         camera.position.y = Math.max(Math.min(camera.position.y + deltaMove.y * rotationSpeed * 100, 800), -800);
+     //         camera.lookAt(scene.position);
+     //     }
+     //     previousMousePosition = {x: e.clientX, y: e.clientY};
+     // });
+	 
+	 
+	 window.addEventListener('mousemove', function(e) {
+    if (isDragging) {
+        var deltaMove = {
+            x: e.clientX - previousMousePosition.x,
+            y: e.clientY - previousMousePosition.y
+        };
+
+        // Adjust the sensitivity factor as desired:
+        var rotationSpeed = 0.005; 
+
+        // Calculate offset from the scene's center
+        var offset = camera.position.clone().sub(scene.position);
+        var radius = offset.length();
+        
+        // Convert current camera position to spherical coordinates
+        var theta = Math.atan2(offset.z, offset.x);
+        var phi = Math.acos(offset.y / radius);
+
+        // Update angles based on mouse movement
+        theta -= deltaMove.x * rotationSpeed; 
+        phi   -= deltaMove.y * rotationSpeed;  // Adjust sign if needed
+
+        // Clamp phi to avoid the camera flipping over
+        phi = Math.max(0.1, Math.min(Math.PI - 0.1, phi));
+
+        // Convert back to Cartesian coordinates
+        offset.x = radius * Math.sin(phi) * Math.cos(theta);
+        offset.y = radius * Math.cos(phi);
+        offset.z = radius * Math.sin(phi) * Math.sin(theta);
+
+        camera.position.copy(scene.position.clone().add(offset));
+        camera.lookAt(scene.position);
+    }
+    previousMousePosition = { x: e.clientX, y: e.clientY };
+});
+
+
+        window.addEventListener('wheel', function(event) {
+            event.preventDefault();
+            
+            var minZoom = 600;
+            var maxZoom = 2000;
+            var zoomSpeed = 0.1;
+            
+            var distance = camera.position.length();
+            var zoomFactor = event.deltaY > 0 ? 1 + zoomSpeed : 1 - zoomSpeed;
+            
+            var newDistance = distance * zoomFactor;
+            newDistance = Math.min(Math.max(newDistance, minZoom), maxZoom);
+            
+            var scale = newDistance / distance;
+            camera.position.multiplyScalar(scale);
+            
+            camera.lookAt(0, 0, 0);
+        });
+
+        window.addEventListener('resize', function() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+		
+		
+		//to capture position
+	//	window.addEventListener('keydown', function(e) {
+    // Choose any key you like; here we use 'p' for "print"
+//    if(e.key === 'p') {
+//        console.log("Camera position:", camera.position);
+//        console.log("Camera rotation:", camera.rotation);
+//    }
+//});
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
